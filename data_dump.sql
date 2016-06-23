@@ -110,6 +110,21 @@ BEGIN
       put('   "'||t_describe(i).col_name||'" DBMS_SQL.'||v_type||'_TABLE;');
    END LOOP;
 
+   /* Enclose and escape rules based on CSV RFP: https://tools.ietf.org/html/rfc4180 */
+   /* 2.6: "Fields containing line breaks (CRLF), double quotes, and commas should be enclosed in double-quotes." */
+   /* 2.7: "If double-quotes are used to enclose fields, then a double-quote appearing inside a field must be escaped by preceding it with another double quote." */
+   put(q'[                                                                                                                                                ]');
+   put(q'[   FUNCTION enclose_and_escape(p_value VARCHAR2) RETURN VARCHAR2 IS                                                                                         ]');
+   put(q'[      v_value VARCHAR2(32767);                                                                                                                  ]');
+   put(q'[   BEGIN                                                                                                                                        ]');
+   put(q'[      v_value := REPLACE(p_value, '"', '""');                                                                                                   ]');
+   put(q'[      IF v_value LIKE '%'||CHR(10)||'%' OR v_value LIKE '%'||CHR(13)||'%' OR v_value LIKE '%"%' OR v_value LIKE '%]'||delimiter_in||q'[%' THEN  ]');
+   put(q'[         v_value := '"' || v_value || '"';                                                                                                      ]');
+   put(q'[      END IF;                                                                                                                                   ]');
+   put(q'[      RETURN v_value;                                                                                                                           ]');
+   put(q'[   END enclose_and_escape;                                                                                                                                  ]');
+   put(q'[                                                                                                                                                ]');
+
    /* Syntax to set the date format to preserve time in the output, open the out file and start to collect... */
    put('BEGIN');
    put('   EXECUTE IMMEDIATE ''ALTER SESSION SET NLS_DATE_FORMAT = '''''||v_nls_date_fmt||''''''';');
@@ -147,8 +162,9 @@ BEGIN
    put('         FOR i IN "'||t_describe(t_describe.FIRST).col_name||'".FIRST .. "'||
                                   t_describe(t_describe.FIRST).col_name||'".LAST LOOP');
 
+   /* Write enclosed and escaped values... */
    FOR i IN t_describe.FIRST .. t_describe.LAST LOOP
-      put('            UTL_FILE.PUT(v_fh,'''||v_delimiter||''' ||"'||t_describe(i).col_name||'"(i));');
+      put('            UTL_FILE.PUT(v_fh,'''||v_delimiter||''' ||enclose_and_escape("'||t_describe(i).col_name||'"(i)));');
       v_delimiter := NVL(delimiter_in,',');
    END LOOP;
 
